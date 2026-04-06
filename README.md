@@ -110,7 +110,7 @@ docker-compose up -d
 ### 2. Install Dependencies
 
 ```bash
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 ```
 
 ### 3. Start Services
@@ -118,13 +118,13 @@ pip install -r requirements.txt
 * Run the Data Sink:
 
 ```bash
-python db_consumer.py
+python3 db_consumer.py
 ```
 
 * Run the CV Engine:
 
 ```bash
-python main.py
+python3 main.py
 ```
 
 * Launch Dashboard:
