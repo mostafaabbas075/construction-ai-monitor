@@ -1,0 +1,7 @@
+ultralytics
+opencv-python
+kafka-python
+psycopg2-binary
+streamlit
+pandas
+matplotlib
