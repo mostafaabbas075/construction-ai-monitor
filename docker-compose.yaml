@@ -1,5 +1,13 @@
 services:
-  # 1. Infrastructure Services
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: equipment_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    ports:
+      - "5432:5432"
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     environment:
@@ -19,23 +27,16 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
-  db:
-    image: postgres:15
-    environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=pass
-      - POSTGRES_DB=equipment_db
-    ports:
-      - "5432:5432"
-
-  # 2. Your Microservices
   cv-service:
     build: .
     command: python main.py
     depends_on:
       - kafka
+    # --- SHARED VOLUME ADDED HERE ---
     volumes:
-      - .:/app
+      - ./shared_data:/app/shared
+    environment:
+      KAFKA_BROKER: "kafka:29092"
 
   db-consumer:
     build: .
@@ -47,7 +48,10 @@ services:
   dashboard:
     build: .
     command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
-    ports:
-      - "8501:8501"
     depends_on:
       - db
+    # --- SHARED VOLUME ADDED HERE ---
+    volumes:
+      - ./shared_data:/app/shared
+    ports:
+      - "8501:8501"

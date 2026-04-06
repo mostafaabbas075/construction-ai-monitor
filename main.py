@@ -3,6 +3,7 @@ import json
 import math
 import time
 import datetime
+import os
 from ultralytics import YOLO
 from kafka import KafkaProducer
 
@@ -13,6 +14,7 @@ MODEL_PATH = "best.pt"
 VIDEO_PATH = "test_video.mp4" 
 OUTPUT_PATH = "demo_output.avi"
 JSON_OUTPUT = "output_data.json" 
+SHARED_FRAME_PATH = "/app/shared/latest_frame.jpg"
 
 # Optimization: Process 1 frame, skip the next 2 frames
 SKIP_FRAMES = 3  
@@ -21,17 +23,21 @@ EQUIPMENT_ID = "EX-001"
 EQUIPMENT_CLASS = "excavator"
 
 # ==========================================
-# 2. Kafka Producer Setup
+# 2. Kafka Producer Setup (With Retry Logic)
 # ==========================================
-try:
-    producer = KafkaProducer(
-        bootstrap_servers=['kafka:29092'],
-        value_serializer=lambda v: json.dumps(v).encode('utf-8')
-    )
-    print("[INFO] 🟢 Connected to Kafka Successfully!")
-except Exception as e:
-    print(f"[WARNING] 🔴 Kafka not reachable. Running Offline Mode.")
-    producer = None
+producer = None
+while producer is None:
+    try:
+        print("[KAFKA] 🔄 Attempting to connect to Kafka...")
+        producer = KafkaProducer(
+            bootstrap_servers=['kafka:29092'],
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            request_timeout_ms=5000 # Wait 5s before failing
+        )
+        print("[INFO] 🟢 Connected to Kafka Successfully!")
+    except Exception as e:
+        print(f"[WARNING] 🔴 Kafka not ready yet. Retrying in 5s... ({e})")
+        time.sleep(5)
 
 # ==========================================
 # 3. Model Loading
@@ -50,7 +56,7 @@ def format_timestamp(seconds):
 def process_video():
     cap = cv2.VideoCapture(VIDEO_PATH)
     
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    fps = int(cap.get(cv2.CAP_PROP_FPS)) if cap.get(cv2.CAP_PROP_FPS) > 0 else 30
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
@@ -64,8 +70,14 @@ def process_video():
     last_annotated_frame = None
     all_payloads = []
     prev_bucket_center = None
+    
+    # Initialize variables to avoid errors in first skipped frames
+    current_activity = "INITIALIZING"
+    current_state = "INACTIVE"
+    utilization_percent = 0.0
+    color = (0, 255, 255)
 
-    print(f"[INFO] 🎬 Processing Video on CPU (Analyzing 1 every {SKIP_FRAMES} frames)...")
+    print(f"[INFO] 🎬 Processing Video (Analyzing 1 every {SKIP_FRAMES} frames)...")
     
     while cap.isOpened():
         ret, frame = cap.read()
@@ -171,21 +183,22 @@ def process_video():
             if last_annotated_frame is None:
                 last_annotated_frame = frame
         
-        # --- Display, Save, and Live Feed Injection ---
+        # --- Create Final Display Frame ---
         display_frame = last_annotated_frame.copy()
         
-        # Display State, Activity, and Utilization % on the frame
+        # Add UI Overlays
         cv2.putText(display_frame, f"{current_state} | {current_activity} | Util: {utilization_percent}%", 
                     (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 3)
         
-        # Write to video file
+        # Write to local avi video file
         out.write(display_frame)
         
-        # Write to an image file for the Streamlit Live Feed
-        cv2.imwrite("latest_frame.jpg", display_frame)
+        # --- FIXED: Save the ANNOTATED frame to the shared Docker volume ---
+        # This ensures the Dashboard shows the YOLO boxes and the HUD
+        cv2.imwrite(SHARED_FRAME_PATH, display_frame)
         
         if frame_count % 30 == 0:
-            print(f"[LIVE] Frame: {frame_count} | {current_state} - {current_activity} | Utilization: {utilization_percent}%")
+            print(f"[LIVE] Frame: {frame_count} | State: {current_state} | Utilization: {utilization_percent}%")
 
     cap.release()
     out.release()
@@ -194,8 +207,7 @@ def process_video():
     with open(JSON_OUTPUT, "w") as f:
         json.dump(all_payloads, f, indent=4)
         
-    print(f"\n[SUCCESS] 🎉 Video saved to {OUTPUT_PATH}")
-    print(f"[SUCCESS] 💾 Payload JSON saved to {JSON_OUTPUT}")
+    print(f"\n[SUCCESS] 🎉 Process Completed!")
 
 if __name__ == "__main__":
     process_video()

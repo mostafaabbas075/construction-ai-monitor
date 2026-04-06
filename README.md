@@ -1,4 +1,3 @@
-````markdown
 # 🏗️ Equipment Utilization & Activity Classification Prototype
 
 This project is a real-time, microservices-based pipeline designed to monitor construction equipment (Excavators & Dump Trucks). It tracks utilization states (ACTIVE vs. INACTIVE), classifies specific work activities, and calculates overall efficiency metrics using Computer Vision and a distributed backend architecture.
@@ -27,28 +26,67 @@ The system is composed of three main microservices:
 
 # 🧪 Technical Decisions & Trade-offs
 
-## Handling Articulated Motion
+## ⚙️ Technical Methodology & Motion Analysis
 
-The core challenge was detecting an ACTIVE state when only the excavator's arm moves while the tracks remain stationary. I solved this by implementing **Region-Based Part Analysis**:
+While advanced approaches such as **LSTM + YOLO** or **Optical Flow** can capture deep temporal features, this prototype adopts a **High-Frequency Spatial-Temporal Heuristic** approach.
 
-- Instead of tracking the machine as a single bounding box, the model tracks sub-components: Bucket, Boom, and Arm.  
-- By calculating the relative displacement of the Bucket over time and its spatial relationship with the Boom, the system identifies "Digging" or "Swinging" based on vertical and horizontal movement thresholds, effectively capturing activity that global motion analysis would miss.  
-
----
-
-## Activity Classification Logic
-
-- **Dumping:** Identified via Intersection over Union (IoU) logic between the Bucket and DumpTruck bounding boxes.  
-- **Digging:** Classified based on the vertical distance and downward trajectory of the Bucket relative to the Boom.  
-- **Waiting:** Triggered when no significant component movement is detected for a specific temporal window.  
+- By tracking sub-components (Bucket / Boom) at ~30 FPS, the system captures fine-grained motion dynamics.  
+- This approach approximates the behavior of Optical Flow in detecting motion patterns, but with significantly lower computational overhead.  
+- As a result, the system achieves **real-time performance**, making it suitable for **edge deployment scenarios** where compute resources are limited.  
 
 ---
 
-# 📊 Dataset & Training
+## 🦾 Handling Articulated Motion
+
+The core challenge was detecting an ACTIVE state when only the excavator's arm moves while the tracks remain stationary. This was addressed using **Region-Based Part Analysis**:
+
+- Instead of treating the machine as a single bounding box, the system tracks key sub-components: **Bucket, Boom, and Arm**.  
+- The relative displacement of the Bucket over time is analyzed along with its spatial relationship to the Boom.  
+- Based on vertical and horizontal motion thresholds, the system classifies activities such as **Digging** and **Swinging**, even when the base remains static.  
+
+This approach ensures accurate activity detection in scenarios where traditional global motion analysis would fail.
+
+---
+
+## 🎯 Activity Classification Logic
+
+- **Dumping:** Detected using **Intersection over Union (IoU)** between the Bucket and Dump Truck bounding boxes.  
+- **Digging:** Identified based on downward motion and vertical displacement of the Bucket relative to the Boom.  
+- **Swinging/Loading:** Detected via horizontal motion patterns of the Bucket.  
+- **Waiting:** Triggered when no significant movement is observed across tracked components within a temporal window.  
+
+---
+
+## 🔄 On Re-ID & Dwell Time
+
+To ensure **Dwell Time persistence** and stable tracking:
+
+- The system utilizes the **BoT-SORT tracker**, which handles temporary occlusions and short-term object disappearance.  
+- This guarantees consistent ID tracking and reliable time-based analytics.  
+
+For large-scale deployments:
+
+- A dedicated **Re-ID Embedding Network** can be integrated.  
+- This enables **cross-camera identity tracking**, making the system scalable across multiple camera views in large construction sites.  
+
+---
+
+# 📊 Dataset, Model & Demo
 
 - **Model:** The model was custom-trained on a curated dataset of construction site imagery.  
-- **Training Data:** You can access the raw images, labels, and training logs via this [https://drive.google.com/drive/folders/159yX3il2xHawUC9rkfMsgXRsLANUY4Ek?usp=sharing](GOOGLE_DRIVE_LINK)..  
-- **Zero-Shot Testing:** ⚠️ Important Note: To ensure unbiased evaluation and demonstrate the model's generalization capabilities, the video used in the demo was completely excluded from the training and validation datasets (Unseen Data).  
+
+- **Google Drive Resources:**  
+  All project assets are available here:  
+  👉 [Project Files (Model + Training Logs + Demo Video)](https://drive.google.com/drive/folders/1Y0cqDfvDfzFm7a-0Ef_HKR12G5tFUHpO?usp=sharing)
+
+  This includes:
+  - Trained model weights (`best.pt`)  
+  - Full training dataset (images & labels)  
+  - Training logs and outputs  
+  - Demo video showcasing the system  
+
+- **Zero-Shot Testing:** ⚠️ Important Note:  
+  To ensure unbiased evaluation and demonstrate the model's generalization capabilities, the video used in the demo was completely excluded from the training and validation datasets (Unseen Data).  
 
 ---
 
@@ -103,8 +141,5 @@ streamlit run app.py
 * `db_consumer.py`: Kafka Consumer for DB persistence
 * `app.py`: Streamlit Frontend Dashboard
 * `docker-compose.yml`: Infrastructure orchestration
-* `best.pt`: Trained YOLO weights
 * `output_data.json`: Sample of the exported Kafka payload
-
-```
-```
+* `requirements.txt`: Dependencies
